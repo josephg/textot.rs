@@ -93,11 +93,11 @@ impl<'a> OpComponent<'a> {
 pub struct Op<'a> (Vec<OpComponent<'a>>);
 
 impl<'a> Op<'a> {
-    fn new() -> Op<'a> {
+    pub fn new() -> Op<'a> {
         Op(Vec::new())
     }
 
-    fn append(&mut self, c: OpComponent<'a>) {
+    pub fn append(&mut self, c: OpComponent<'a>) {
         if c.is_empty() { return; } // No-op! Ignore!
 
         if let Some(last) = self.0.pop() {
@@ -115,15 +115,6 @@ impl<'a> Op<'a> {
         } else {
             self.0.push(c);
         }
-    }
-
-    fn into_iter(self) -> OpIter<'a> {
-        let mut iter = OpIter {
-            _next: None,
-            contents: self.0.into_iter(),
-        };
-        iter.populate();
-        iter
     }
 
     fn trim(&mut self) {
@@ -146,11 +137,25 @@ impl<'a> Op<'a> {
     }
 }
 
+impl<'a> IntoIterator for Op<'a> {
+    type Item = OpComponent<'a>;
+    type IntoIter = OpIter<'a>;
+
+    fn into_iter(self) -> OpIter<'a> {
+        let mut iter = OpIter {
+            _next: None,
+            contents: self.0.into_iter(),
+        };
+        iter.populate();
+        iter
+    }
+}
+
 impl<'a> From<Vec<OpComponent<'a>>> for Op<'a> {
     fn from(v: Vec<OpComponent<'a>>) -> Op<'a> { Op(v).normalize() }
 }
 
-struct OpIter<'a> {
+pub struct OpIter<'a> {
     // _next is eagarly populated from contents. Its None when the iter is empty.
     _next: Option<OpComponent<'a>>,
     contents: std::vec::IntoIter<OpComponent<'a>>,
@@ -281,7 +286,7 @@ pub fn text_compose<'a>(op1: Op<'a>, op2: Op<'a>) -> Op<'a> {
     let mut result = Op::new();
     let mut iter = op1.into_iter();
 
-    for c in op2.into_iter() {
+    for c in op2 {
         match c {
             Skip(mut length) => {
                 // Copy length from op1.
