@@ -3,6 +3,7 @@
 
 use std::borrow::Cow;
 use std::{result, error, fmt};
+use std::cmp::min;
 
 //use std::convert::From;
 
@@ -32,21 +33,24 @@ impl error::Error for TextOTError {
 
 pub type Result<T> = result::Result<T, TextOTError>;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum OpComponent<'a> {
     Skip(usize),
     Del(usize),
     Ins(Cow<'a, str>),
 }
 
+use self::OpComponent::*;
+
 impl<'a> OpComponent<'a> {
+    fn len(&self) -> usize {
+        match *self { Skip(len) => len, Del(len) => len, Ins(ref s) => s.chars().count() }
+    }
+
     fn is_empty(&self) -> bool {
-        use OpComponent::*;
-        match *self {
-            Skip(len) => len == 0,
-            Del(len) => len == 0,
-            Ins(ref s) => s.len() == 0,
-        }
+        // Does it make sense to *ever* have empty op components? Maybe they should be illegal to
+        // express.
+        match *self { Ins(ref s) => s.is_empty(), _ => self.len() == 0 }
     }
 
     /*
@@ -58,13 +62,49 @@ impl<'a> OpComponent<'a> {
             Ins(_) => match *other {Ins(_) => true, _ => false},
         }
     }*/
+
+    fn split(self, offset: usize) -> (OpComponent<'a>, Option<OpComponent<'a>>) {
+        assert!(offset > 0);
+        let len = self.len();
+        if len <= offset { return (self, None) }
+
+        let offset = min(offset, len);
+        match self {
+            Skip(s) => (Skip(offset), Some(Skip(s - offset))),
+            Del(s) => (Del(offset), Some(Del(s - offset))),
+            Ins(cow) => {
+                // Need the byte offset either way.
+                let byte_offset = cow.char_indices().skip(offset).next().unwrap().0;
+                match cow {
+                    Cow::Borrowed(s) => {
+                        let (a, b) = s.split_at(byte_offset);
+                        (Ins(Cow::Borrowed(a)), Some(Ins(Cow::Borrowed(b))))
+                    },
+                    Cow::Owned(mut s) => {
+                        // Its sad I have to allocate a new string here. I wonder if it would
+                        // make the algorithm faster to make a Cow::Borrowed clone set and
+                        // compose/transform/etc with those instead of the originals.
+                        let b = s[offset..].to_string();
+                        s.truncate(byte_offset);
+                        (Ins(Cow::Owned(s)), Some(Ins(Cow::Owned(b))))
+                    }
+                }
+            }
+        }
+    }
+
+    fn shallow_clone(&'a self) -> OpComponent<'a> {
+        match *self {
+            Ins(Cow::Borrowed(s)) => Ins(Cow::Borrowed(s)),
+            Ins(Cow::Owned(ref s)) => Ins(Cow::Borrowed(&s)),
+            _ => self.clone(),
+        }
+    }
 }
 
 pub type Op<'a> = Vec<OpComponent<'a>>;
 
 fn append_op<'a>(op: &mut Op<'a>, c: OpComponent<'a>) {
-    use OpComponent::*;
-
     if c.is_empty() { return; } // No-op! Ignore!
 
     if let Some(last) = op.pop() {
@@ -84,13 +124,67 @@ fn append_op<'a>(op: &mut Op<'a>, c: OpComponent<'a>) {
     }
 }
 
+struct OpIter<'a> {
+    // Always populated.
+    _next: Option<OpComponent<'a>>,
+    contents: std::slice::Iter<'a, OpComponent<'a>>,
+}
+
+
+impl<'a> OpIter<'a> {
+    fn new(op: &'a Op) -> OpIter<'a> {
+        let mut iter = OpIter {
+            _next: None,
+            contents: op.iter(),
+        };
+        iter.populate();
+        iter
+    }
+
+    fn populate(&mut self) {
+        if self._next.is_none() {
+            self._next = self.contents.next().map(|c| c.shallow_clone());
+        }
+    }
+
+    /*
+    fn peek(&'a mut self) -> Option<&OpComponent<'a>> {
+        self._next.as_ref()
+    }*/
+
+    fn take_whole(&mut self) -> Option<OpComponent<'a>> {
+        self._next.take().map(|c| { self.populate(); c })
+    }
+
+    fn _take_indivis<F>(&mut self, size: usize, is_indivis: F) -> Option<OpComponent<'a>>
+            where F: FnOnce(&OpComponent<'a>) -> bool {
+        self._next.take().map(|c| {
+            if is_indivis(&c) { self.populate(); c }
+            else {
+                let (a, b) = c.split(size);
+                self._next = b;
+                self.populate();
+                a
+            }
+        })
+    }
+
+    // Take inserts whole. Other ops get split based on split size.
+    fn take_ins(&mut self, size: usize) -> Option<OpComponent<'a>> {
+        self._take_indivis(size, |c| match *c { Ins(_) => true, _ => false})
+    }
+
+    // Take deletes whole. Other ops get split based on split size.
+    fn take_del(&mut self, size: usize) -> Option<OpComponent<'a>> {
+        self._take_indivis(size, |c| match *c { Del(_) => true, _ => false})
+    }
+}
+
 
 
 fn trim(op: &mut Op) {
     // Throw away anything at the back that isn't an insert.
-    while op.last().map_or(false, |last| match last {
-        &OpComponent::Ins(_) => false, _ => true,
-    }) {
+    while op.last().map_or(false, |last| match last { &Ins(_) => false, _ => true }) {
         op.pop();
     }
 }
@@ -108,7 +202,6 @@ pub fn normalize(op: Op) -> Op {
 }
 
 pub fn text_apply<S: EditableText>(s: &mut S, op: &Op) -> Result<()> {
-    use OpComponent::*;
     let mut pos = 0;
 
     for c in op {
@@ -124,6 +217,29 @@ pub fn text_apply<S: EditableText>(s: &mut S, op: &Op) -> Result<()> {
 
     Ok(())
 }
+
+/*
+pub enum Side { Left, Right }
+pub fn text_transform<'a>(op: Op, other_op: &Op, side: Side) -> Op<'a> {
+    let result = Op::new();
+    let iter = OpIter::new(&op);
+
+    for c in other_op {
+        match c {
+            Skip(mut s) => {
+                while s > 0 {
+                    // Copy components across.
+
+                }
+            },
+
+
+        }
+    }
+
+    result
+}
+*/
 
 pub fn text_compose<'a>(op1: Op, op2: Op) -> Op<'a> {
     let result = Op::new();
