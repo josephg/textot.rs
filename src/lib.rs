@@ -1,6 +1,7 @@
 // TODO: Remove me.
 #![allow(unused_variables)]
 
+use std::borrow::Cow;
 use std::{result, error, fmt};
 
 //use std::convert::From;
@@ -32,13 +33,13 @@ impl error::Error for TextOTError {
 pub type Result<T> = result::Result<T, TextOTError>;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum OpComponent {
+pub enum OpComponent<'a> {
     Skip(usize),
     Del(usize),
-    Ins(String), // Should this be heap allocated??
+    Ins(Cow<'a, str>),
 }
 
-impl OpComponent {
+impl<'a> OpComponent<'a> {
     fn is_empty(&self) -> bool {
         use OpComponent::*;
         match *self {
@@ -59,25 +60,9 @@ impl OpComponent {
     }*/
 }
 
-enum OpComponentRef<'a> {
-    Skip(usize),
-    Del(usize),
-    Ins(&'a str), // Should this be heap allocated??
-}
+pub type Op<'a> = Vec<OpComponent<'a>>;
 
-impl<'a> From<&'a OpComponent> for OpComponentRef<'a> {
-    fn from(op: &'a OpComponent) -> Self {
-         match op {
-            &OpComponent::Skip(s) => OpComponentRef::Skip(s),
-            &OpComponent::Del(s) => OpComponentRef::Del(s),
-            &OpComponent::Ins(ref s) => OpComponentRef::Ins(s),
-        }
-    }
-}
-
-pub type Op = Vec<OpComponent>;
-
-fn append_op(op: &mut Op, c: OpComponent) {
+fn append_op<'a>(op: &mut Op<'a>, c: OpComponent<'a>) {
     use OpComponent::*;
 
     if c.is_empty() { return; } // No-op! Ignore!
@@ -86,7 +71,10 @@ fn append_op(op: &mut Op, c: OpComponent) {
         let (new_last, is_merged) = match last {
             Skip(a) => match c { Skip(b) => (Skip(a+b), true), _ => (Skip(a), false) },
             Del(a) => match c { Del(b) => (Del(a+b), true), _ => (Del(a), false) },
-            Ins(a) => match c { Ins(ref b) => (Ins(a+&b), true), _ => (Ins(a), false) },
+            Ins(a) => match c {
+                Ins(ref b) => (Ins(Cow::Owned(a.into_owned()+&b)), true),
+                _ => (Ins(a), false)
+            },
         };
 
         op.push(new_last);
@@ -137,7 +125,7 @@ pub fn text_apply<S: EditableText>(s: &mut S, op: &Op) -> Result<()> {
     Ok(())
 }
 
-pub fn text_compose(op1: Op, op2: Op) -> Op {
+pub fn text_compose<'a>(op1: Op, op2: Op) -> Op<'a> {
     let result = Op::new();
 
 
@@ -147,11 +135,12 @@ pub fn text_compose(op1: Op, op2: Op) -> Op {
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
     use super::*;
     use OpComponent::*;
 
     fn ins(s: &str) -> OpComponent {
-        Ins(s.to_string())
+        Ins(Cow::Borrowed(s))
     }
 
     #[test]
