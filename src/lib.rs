@@ -80,6 +80,7 @@ impl<'a> OpComponent<'a> {
         }
     }*/
 
+    // I'm sad about these functions, but there's still no if not let binding.
     fn is_insert(&self) -> bool {
         match *self { Ins(_) => true, _ => false }
     }
@@ -88,45 +89,74 @@ impl<'a> OpComponent<'a> {
     }
 }
 
-pub type Op<'a> = Vec<OpComponent<'a>>;
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Op<'a> (Vec<OpComponent<'a>>);
 
-fn append_op<'a>(op: &mut Op<'a>, c: OpComponent<'a>) {
-    if c.is_empty() { return; } // No-op! Ignore!
-
-    if let Some(last) = op.pop() {
-        let (new_last, is_merged) = match last {
-            Skip(a) => match c { Skip(b) => (Skip(a+b), true), _ => (Skip(a), false) },
-            Del(a) => match c { Del(b) => (Del(a+b), true), _ => (Del(a), false) },
-            Ins(a) => match c {
-                Ins(ref b) => (Ins(Cow::Owned(a.into_owned()+&b)), true),
-                _ => (Ins(a), false)
-            },
-        };
-
-        op.push(new_last);
-        if !is_merged { op.push(c); }
-    } else {
-        op.push(c);
+impl<'a> Op<'a> {
+    fn new() -> Op<'a> {
+        Op(Vec::new())
     }
-}
 
-struct OpIter<'a> {
-    // Always populated.
-    _next: Option<OpComponent<'a>>,
-    contents: std::vec::IntoIter<OpComponent<'a>>,
-}
+    fn append(&mut self, c: OpComponent<'a>) {
+        if c.is_empty() { return; } // No-op! Ignore!
 
+        if let Some(last) = self.0.pop() {
+            let (new_last, is_merged) = match last {
+                Skip(a) => match c { Skip(b) => (Skip(a+b), true), _ => (Skip(a), false) },
+                Del(a) => match c { Del(b) => (Del(a+b), true), _ => (Del(a), false) },
+                Ins(a) => match c {
+                    Ins(ref b) => (Ins(Cow::Owned(a.into_owned()+&b)), true),
+                    _ => (Ins(a), false)
+                },
+            };
 
-impl<'a> OpIter<'a> {
-    fn new(op: Op<'a>) -> OpIter<'a> {
+            self.0.push(new_last);
+            if !is_merged { self.0.push(c); }
+        } else {
+            self.0.push(c);
+        }
+    }
+
+    fn into_iter(self) -> OpIter<'a> {
         let mut iter = OpIter {
             _next: None,
-            contents: op.into_iter(),
+            contents: self.0.into_iter(),
         };
         iter.populate();
         iter
     }
 
+    fn trim(&mut self) {
+        // Throw away anything at the back that isn't an insert.
+        while self.0.last().map_or(false, |last| match last { &Skip(_) => true, _ => false }) {
+            self.0.pop();
+        }
+    }
+
+    pub fn normalize(self) -> Op<'a> {
+        // This is a really lazy way to write this function - it involves a new vector allocation. Much
+        // better would be to edit it in-place.
+        let mut result = Op(Vec::with_capacity(self.0.capacity()));
+        for c in self.0 {
+            result.append(c);
+        }
+
+        result.trim();
+        result
+    }
+}
+
+impl<'a> From<Vec<OpComponent<'a>>> for Op<'a> {
+    fn from(v: Vec<OpComponent<'a>>) -> Op<'a> { Op(v).normalize() }
+}
+
+struct OpIter<'a> {
+    // _next is eagarly populated from contents. Its None when the iter is empty.
+    _next: Option<OpComponent<'a>>,
+    contents: std::vec::IntoIter<OpComponent<'a>>,
+}
+
+impl<'a> OpIter<'a> {
     fn populate(&mut self) {
         if self._next.is_none() {
             self._next = self.contents.next();
@@ -135,10 +165,6 @@ impl<'a> OpIter<'a> {
     
     fn peek(&self) -> Option<&OpComponent<'a>> {
         self._next.as_ref()
-    }
-
-    fn take_whole(&mut self) -> Option<OpComponent<'a>> {
-        self._next.take().map(|c| { self.populate(); c })
     }
 
     fn _take_indivis<F>(&mut self, size: usize, is_indivis: F) -> OpComponent<'a>
@@ -170,35 +196,23 @@ impl<'a> OpIter<'a> {
 
     fn append_rest(&mut self, op: &mut Op<'a>) {
         // Append any extra ops directly.
-        while let Some(chunk) = self.take_whole() {
-            append_op(op, chunk);
+        while let Some(chunk) = self.next() {
+            op.append(chunk);
         }
     }
 }
 
-fn trim(op: &mut Op) {
-    // Throw away anything at the back that isn't an insert.
-    while op.last().map_or(false, |last| match last { &Skip(_) => true, _ => false }) {
-        op.pop();
+impl<'a> Iterator for OpIter<'a> {
+    type Item = OpComponent<'a>;
+    fn next(&mut self) -> Option<OpComponent<'a>> {
+        self._next.take().map(|c| { self.populate(); c })
     }
-}
-
-pub fn normalize(op: Op) -> Op {
-    // This is a really lazy way to write this function - it involves a new vector allocation. Much
-    // better would be to edit it in-place.
-    let mut result = Op::with_capacity(op.capacity());
-    for c in op {
-        append_op(&mut result, c);
-    }
-
-    trim(&mut result);
-    result
 }
 
 pub fn text_apply<S: EditableText>(s: &mut S, op: &Op) {
     let mut pos = 0;
 
-    for c in op {
+    for c in &op.0 {
         match *c {
             Skip(len) => pos += len,
             Del(len) => s.remove_at(pos, len),
@@ -215,9 +229,9 @@ pub enum Side { Left, Right }
 
 pub fn text_transform<'a>(op: Op<'a>, other_op: &Op, side: Side) -> Op<'a> {
     let mut result = Op::new();
-    let mut iter = OpIter::new(op);
+    let mut iter = op.into_iter();
 
-    for c in other_op {
+    for c in &other_op.0 {
         match c {
             &Skip(mut length) => {
                 while length > 0 {
@@ -226,7 +240,7 @@ pub fn text_transform<'a>(op: Op<'a>, other_op: &Op, side: Side) -> Op<'a> {
                     if !chunk.is_insert() {
                         length -= chunk.len();
                     }
-                    append_op(&mut result, chunk);
+                    result.append(chunk);
                 }
             },
 
@@ -234,12 +248,12 @@ pub fn text_transform<'a>(op: Op<'a>, other_op: &Op, side: Side) -> Op<'a> {
                 if side == Side::Left {
                     // The left insert should go first, if any.
                     if let Some(&Ins(_)) = iter.peek() {
-                        append_op(&mut result, iter.take_whole().unwrap());
+                        result.append(iter.next().unwrap());
                     }
                 }
 
                 // Otherwise skip the foreign inserted text.
-                append_op(&mut result, Skip(s.chars().count()));
+                result.append(Skip(s.chars().count()));
             }
 
             &Del(mut length) => {
@@ -247,7 +261,7 @@ pub fn text_transform<'a>(op: Op<'a>, other_op: &Op, side: Side) -> Op<'a> {
                     let chunk = iter.take_ins(length);
                     match chunk {
                         Skip(n) => length -= n,
-                        Ins(s) => append_op(&mut result, Ins(s)),
+                        Ins(s) => result.append(Ins(s)),
                         Del(n) => length -= n, // Delete is unnecessary now - text has been deleted by the other op.
                     }
                 }
@@ -256,7 +270,7 @@ pub fn text_transform<'a>(op: Op<'a>, other_op: &Op, side: Side) -> Op<'a> {
     }
 
     iter.append_rest(&mut result);
-    trim(&mut result);
+    result.trim();
 
     result
 }
@@ -265,7 +279,7 @@ pub fn text_transform<'a>(op: Op<'a>, other_op: &Op, side: Side) -> Op<'a> {
 // memory cloning. Dunno!
 pub fn text_compose<'a>(op1: Op<'a>, op2: Op<'a>) -> Op<'a> {
     let mut result = Op::new();
-    let mut iter = OpIter::new(op1);
+    let mut iter = op1.into_iter();
 
     for c in op2.into_iter() {
         match c {
@@ -276,22 +290,22 @@ pub fn text_compose<'a>(op1: Op<'a>, op2: Op<'a>) -> Op<'a> {
                     if !chunk.is_del() {
                         length -= chunk.len();
                     }
-                    append_op(&mut result, chunk);
+                    result.append(chunk);
                 }
             },
 
-            Ins(_) => append_op(&mut result, c),
+            Ins(_) => result.append(c),
 
             Del(mut length) => {
                 while length > 0 {
                     let chunk = iter.take_del(length);
                     match chunk {
                         Skip(n) => {
-                            append_op(&mut result, Del(n));
+                            result.append(Del(n));
                             length -= n;
                         },
                         Ins(s) => length -= s.chars().count(),
-                        Del(_) => append_op(&mut result, chunk),
+                        Del(_) => result.append(chunk),
                     }
                 }
             }
@@ -299,7 +313,7 @@ pub fn text_compose<'a>(op1: Op<'a>, op2: Op<'a>) -> Op<'a> {
     }
 
     iter.append_rest(&mut result);
-    trim(&mut result);
+    result.trim();
     result
 }
 
@@ -320,7 +334,7 @@ mod tests {
 
         let json = Json::from_str(s).unwrap();
 
-        normalize(json.as_array().unwrap().into_iter().map(|item| {
+        Op(json.as_array().unwrap().into_iter().map(|item| {
             match item {
                 &Json::U64(s) => Skip(s as usize),
                 &Json::Object(ref d) => {
@@ -330,27 +344,27 @@ mod tests {
                 },
                 _ => panic!("Invalid JSON")
             }
-        }).collect())
+        }).collect()).normalize()
     }
-
 
     #[test]
     fn normalize_works() {
-        assert_eq!(Op::new(), normalize(vec![Skip(0)]));
-        assert_eq!(Op::new(), normalize(vec![ins("")]));
-        assert_eq!(Op::new(), normalize(vec![Del(0)]));
+        assert_eq!(Op::new(), Op::from(vec![Skip(0)]));
+        assert_eq!(Op::new(), Op::from(vec![ins("")]));
+        assert_eq!(Op::new(), Op::from(vec![Del(0)]));
 
-        assert_eq!(Op::new(), normalize(vec![Skip(1), Skip(1)]));
-        assert_eq!(Op::new(), normalize(vec![Skip(2), Skip(0)]));
-        assert_eq!(vec![Skip(2), ins("hi")], normalize(vec![Skip(1), Skip(1), ins("hi")]));
-        assert_eq!(vec![Del(2), ins("hi")], normalize(vec![Del(1), Del(1), ins("hi")]));
-        assert_eq!(vec![ins("a")], normalize(vec![ins("a"), Skip(100)]));
-        assert_eq!(vec![ins("ab")], normalize(vec![ins("a"), ins("b")]));
-        assert_eq!(vec![ins("ab")], normalize(vec![ins("ab"), ins("")]));
-        assert_eq!(vec![ins("ab")], normalize(vec![Skip(0), ins("a"), Skip(0), ins("b"), Skip(0)]));
+        assert_eq!(Op::new(), Op::from(vec![Skip(1), Skip(1)]));
+        assert_eq!(Op::new(), Op::from(vec![Skip(2), Skip(0)]));
+        assert_eq!(Op(vec![Skip(2), ins("hi")]), Op::from(vec![Skip(1), Skip(1), ins("hi")]));
+        assert_eq!(Op(vec![Del(2), ins("hi")]), Op::from(vec![Del(1), Del(1), ins("hi")]));
+        assert_eq!(Op(vec![ins("a")]), Op::from(vec![ins("a"), Skip(100)]));
+        assert_eq!(Op(vec![ins("ab")]), Op::from(vec![ins("a"), ins("b")]));
+        assert_eq!(Op(vec![ins("ab")]), Op::from(vec![ins("ab"), ins("")]));
+        assert_eq!(Op(vec![ins("ab")]), Op::from(vec![Skip(0), ins("a"), Skip(0), ins("b"), Skip(0)]));
 
-        assert_eq!(vec![Del(2)], normalize(vec![Del(2)]));
-        assert_eq!(vec![ins("a"), Skip(1), Del(1), ins("b")], normalize(vec![ins("a"), Skip(1), Del(1), ins("b")]));
+        assert_eq!(Op(vec![Del(2)]), Op::from(vec![Del(2)]));
+        assert_eq!(Op(vec![ins("a"), Skip(1), Del(1), ins("b")]),
+            Op::from(vec![ins("a"), Skip(1), Del(1), ins("b")]));
     }
 
     #[test]
@@ -382,15 +396,15 @@ mod tests {
 
     #[test]
     fn compose() {
-        assert_eq!(vec![ins("ab")], text_compose(vec![ins("a")], vec![Skip(1), ins("b")]));
+        assert_eq!(Op(vec![ins("ab")]), text_compose(Op(vec![ins("a")]), Op(vec![Skip(1), ins("b")])));
     }
 
     #[test]
     fn apply() {
         let mut s = String::new();
-        text_apply(&mut s, &vec![ins("hi")]);
+        text_apply(&mut s, &Op(vec![ins("hi")]));
         assert_eq!(s, "hi");
-        text_apply(&mut s, &vec![Skip(1), ins("a")]);
+        text_apply(&mut s, &Op(vec![Skip(1), ins("a")]));
         assert_eq!(s, "hai");
 
     }
