@@ -1,9 +1,10 @@
 [package]
+authors = ["Joseph Gentle <me@josephg.com>"]
 name = "text"
 version = "0.1.0"
-authors = ["Joseph Gentle <me@josephg.com>"]
 
 [dependencies]
+inlinable_string = "0.1.10"
 
 [dev-dependencies]
-rustc-serialize = "0.3.22"
+json = "0.11.13"

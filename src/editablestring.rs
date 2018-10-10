@@ -1,7 +1,6 @@
-use std::str::FromStr;
 use std::ptr;
 
-pub trait EditableText : FromStr {
+pub trait EditableText {
     // pos is in utf8 codepoints
     fn insert_at(&mut self, pos: usize, contents: &str);
     fn remove_at(&mut self, pos: usize, length: usize);
