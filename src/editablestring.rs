@@ -15,6 +15,7 @@ impl EditableText for String {
         //println!("pos {}", byte_pos);
         //self.insert_str(byte_pos, contents);
         
+        let old_len = self.len();
         let new_bytes = contents.len();
 
         // This didn't work because it didn't change the string's length
@@ -30,7 +31,7 @@ impl EditableText for String {
             ptr::copy(
                 bytes.offset(byte_pos as isize),
                 bytes.offset((byte_pos + new_bytes) as isize),
-                self.len() - byte_pos
+                old_len - byte_pos
             );
             ptr::copy_nonoverlapping(
                 contents.as_ptr(),

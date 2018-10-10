@@ -28,12 +28,12 @@ fn read_files() -> Result<()> {
             });
         }
         
-        let expect = data["result"].as_str().unwrap().to_string();
-        print!("========\n11pect: '{}'\n", expect);
-        // print!("\n\nDOC: '{}'\nOP:  {:?}\nEXPECT: '{}'\n", doc, op, expect);
+        let expect = data["result"].as_str().unwrap();
+        // print!("========\n11pect: '{}'\n", expect);
+        print!("\n\nDOC: '{}'\nOP:  {:?}\nEXPECT: '{:?}'\n", doc, op, expect);
         let mut result = doc.to_string().clone();
-        op.apply(&mut result);
-        print!("========\ne2pect: '{}'\n", expect);
+        op.clone().apply(&mut result);
+        print!("========\ne2pect: '{:?}'\n", expect);
         assert_eq!(result, expect);
     }
 
