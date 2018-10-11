@@ -299,6 +299,11 @@ pub fn compose(a: &TextOp, b: &TextOp) -> TextOp {
                 while len > 0 {
                     let chunk = iter.next(len);
                     len -= chunk.post_len();
+                    // An if let .. would be better here once stable.
+                    match chunk {
+                        Skip(n) | Del(n) => { result.append_move(Del(n)); },
+                        _ => {} // Cancel inserts.
+                    }
                 }
             },
 
@@ -314,14 +319,3 @@ pub fn compose(a: &TextOp, b: &TextOp) -> TextOp {
 
     result
 }
-
-// #[cfg(test)]
-// mod test {
-//     use super::TextOp;
-//     use super::OpComponent::*;
-//     use std::iter::FromIterator;
-//     use inlinable_string::InlinableString;
-
-
-// }
-
