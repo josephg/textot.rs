@@ -1,5 +1,3 @@
-// #![feature(nll)]
-
 extern crate inlinable_string;
 
 use inlinable_string::{InlinableString, StringExt};

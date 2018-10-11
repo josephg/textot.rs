@@ -5,14 +5,12 @@ This is a simple little rust library to compare writing OT code in rust vs
 [C](https://github.com/ottypes/libot).
 
 Surprisingly the rust implementation is
-the shortest of the three of them, clocking in under 300 sloc vs JS's 357 sloc
-or C's 800 sloc. Mind you, I suspect the C implementation will be *way* faster
-because of the use of union types for inlining of short inserted strings. It
-should be possible to do the same thing in rust, but it won't be as nice.
+the shortest of the three of them, clocking in at 319 sloc vs JS's 357 sloc
+or C's 800 sloc.
 
 The code is very new, and I'm still getting a handle on rust itself. Next step: Benchmarks.
 
-I haven't even put this code up on crates.io. Ping me if you want to use it for any
+I haven't put this code up on crates.io. Ping me if you want to use it for any
 reason and I'll put it up there.
 
 Missing features:
@@ -20,7 +18,7 @@ Missing features:
 - No efficient rope library for efficient string inserts & deletes. Mind you,
   because of rust's type classes it should be possible to make this code work
   with very rich text types for editors.
-- No cursor position transformation code. Mind you, ranges and markers would be more efficiently handled
+- No cursor position transformation code. Ranges and markers would be more efficiently handled
 by applying an operation to a range tree.
 
 ---

@@ -84,7 +84,7 @@ fn test_compose() -> Result<()> {
         let op2 = json_to_op(&data["op2"]).unwrap();
         let expect = json_to_op(&data["result"]).unwrap();
 
-        print!("\n\nOP1: {:?}\nOP2:  {:?}\nEXPECT: '{:?}'\n", op1, op2, expect);
+        // print!("\n\nOP1: {:?}\nOP2:  {:?}\nEXPECT: '{:?}'\n", op1, op2, expect);
         let result = compose(&op1, &op2);
         assert_eq!(result, expect);
     }
