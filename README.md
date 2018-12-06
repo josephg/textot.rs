@@ -1,12 +1,12 @@
 # Rust Plain text OT library
 
 This is a simple little rust library to compare writing OT code in rust vs
-[javascript](https://github.com/ottypes/text) or
+[javascript](https://github.com/ottypes/text-unicode) or
 [C](https://github.com/ottypes/libot).
 
 Surprisingly the rust implementation is
-the shortest of the three of them, clocking in at 319 sloc vs JS's 357 sloc
-or C's 800 sloc.
+the shortest of the three of them, clocking in at 319 loc vs JS's 357 loc
+or C's 800 loc.
 
 The code is very new, and I'm still getting a handle on rust itself. Next step: Benchmarks.
 
