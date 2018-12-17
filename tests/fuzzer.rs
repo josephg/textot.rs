@@ -1,7 +1,3 @@
-extern crate json;
-
-extern crate text;
-
 use text::{OpComponent, TextOp, transform, compose};
 use std::fs::File;
 use std::io::{Lines, BufReader, BufRead, Result};
@@ -16,7 +12,7 @@ fn read_json_file(filename: &str) -> Result<JsonStreamIter> {
 }
 
 impl Iterator for JsonStreamIter {
-    type Item = json::JsonValue;
+    type Item = JsonValue;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().and_then(|line| {
@@ -32,7 +28,7 @@ fn json_to_op(val: &JsonValue) -> Option<TextOp> {
 
     let mut op = TextOp::new();
     for m in val.members() {
-        use JsonValue::*;
+        use self::JsonValue::*;
         use text::OpComponent::*;
         op.append_move(match m {
             Short(s) => OpComponent::ins_from(s.as_str()),
@@ -48,7 +44,7 @@ fn json_to_op(val: &JsonValue) -> Option<TextOp> {
 
 #[test]
 fn test_apply() -> Result<()> {
-    for data in read_json_file("../text/apply.json")? {
+    for data in read_json_file("../text-unicode/apply.json")? {
         let doc = data["str"].as_str().unwrap();
         let op = json_to_op(&data["op"]).unwrap();
         let expect = data["result"].as_str().unwrap();
@@ -64,7 +60,7 @@ fn test_apply() -> Result<()> {
 
 #[test]
 fn test_transform() -> Result<()> {
-    for data in read_json_file("../text/transform.json")? {
+    for data in read_json_file("../text-unicode/transform.json")? {
         let op = json_to_op(&data["op"]).unwrap();
         let other_op = json_to_op(&data["otherOp"]).unwrap();
         let side_is_left = data["side"].as_str().unwrap() == "left";
@@ -79,7 +75,7 @@ fn test_transform() -> Result<()> {
 
 #[test]
 fn test_compose() -> Result<()> {
-    for data in read_json_file("../text/compose.json")? {
+    for data in read_json_file("../text-unicode/compose.json")? {
         let op1 = json_to_op(&data["op1"]).unwrap();
         let op2 = json_to_op(&data["op2"]).unwrap();
         let expect = json_to_op(&data["result"]).unwrap();

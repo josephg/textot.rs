@@ -2,6 +2,7 @@
 authors = ["Joseph Gentle <me@josephg.com>"]
 name = "text"
 version = "0.1.0"
+edition = "2018"
 
 [dependencies]
 inlinable_string = "0.1.10"

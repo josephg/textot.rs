@@ -65,14 +65,12 @@ impl TextOp {
     pub fn append(&mut self, c: &OpComponent) {
         if c.is_noop() { return; }
 
-        // Its gross that we need to op.push in a different scope. This can be
-        // cleaned up once non-lexical lifetimes lands
-        if match (self.0.last_mut(), c) {
+        match (self.0.last_mut(), c) {
             (Some(Skip(a)), Skip(b))
-            | (Some(Del(a)), Del(b)) => { *a += b; false },
-            (Some(Ins(a)), Ins(b)) => { a.push_str(b); false },
-            _ => true
-        } { self.0.push(c.clone()); }
+            | (Some(Del(a)), Del(b)) => { *a += b },
+            (Some(Ins(a)), Ins(b)) => { a.push_str(b) },
+            _ => { self.0.push(c.clone()) }
+        }
     }
 
     pub fn append_move(&mut self, c: OpComponent) {
