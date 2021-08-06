@@ -1,7 +1,6 @@
-extern crate inlinable_string;
-
-use inlinable_string::{InlinableString, StringExt};
 use std::iter::FromIterator;
+use smartstring::alias::{String as SmartString};
+use smallvec::{SmallVec, smallvec};
 
 mod editablestring;
 use self::editablestring::EditableText;
@@ -15,14 +14,14 @@ pub enum OpComponent {
     // O(n) operation. I could store the length alongside the string, but the
     // string is almost always short so ... its probably not a big deal either
     // way.
-    Ins(InlinableString),
+    Ins(SmartString),
 }
 
 use self::OpComponent::*;
 
 impl OpComponent {
-    pub fn ins_from<T>(s: T) -> OpComponent where InlinableString: From<T> {
-        Ins(InlinableString::from(s))
+    pub fn ins_from<T>(s: T) -> OpComponent where SmartString: From<T> {
+        Ins(SmartString::from(s))
     }
 
     pub fn count(&self) -> usize {
@@ -42,24 +41,24 @@ impl OpComponent {
             Del(_) => Del(len),
             // Move to slice_chars when available
             // https://doc.rust-lang.org/1.2.0/std/primitive.str.html#method.slice_chars
-            Ins(ref s) => Ins(InlinableString::from_iter(
-                s.chars().skip(offset).take(len)
-            )),
+            Ins(ref s) => Ins(s.chars().skip(offset).take(len).collect()),
         }
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct TextOp (Vec<OpComponent>);
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
+pub struct TextOp (SmallVec<[OpComponent; 2]>);
+// pub struct TextOp (Vec<OpComponent>);
 
 impl TextOp {
     pub fn new() -> Self {
-        TextOp(Vec::new())
+        TextOp(smallvec![])
+        // TextOp(Vec::new())
     }
 
-    pub fn with_capacity(cap: usize) -> Self {
-        TextOp(Vec::with_capacity(cap))
-    }
+    // pub fn with_capacity(cap: usize) -> Self {
+    //     TextOp(Vec::with_capacity(cap))
+    // }
     
     // TODO: Consider writing a version of this which takes ownership of the op component
     pub fn append(&mut self, c: &OpComponent) {
@@ -124,7 +123,7 @@ impl FromIterator<OpComponent> for TextOp {
 
 #[test]
 fn simple_apply() {
-    let op = TextOp::from_iter(vec!(Skip(2), Ins(InlinableString::from("hi"))));
+    let op = TextOp::from_iter(vec!(Skip(2), Ins(SmartString::from("hi"))));
     let mut doc = "yo".to_string();
     op.apply(&mut doc);
     assert_eq!(doc, "yohi");
@@ -191,18 +190,18 @@ impl <'a>TextOpIterator<'a> {
             // clone the string here. We could instead pass back a reference,
             // but then the slices below will need to deal with lifetimes or be
             // Rc or something.
-            return c.clone();
+            c.clone()
         } else if clen - self.offset <= max_size {
             // Take remainder of component.
             let result = c.slice(self.offset, clen - self.offset);
             self.idx += 1;
             self.offset = 0;
-            return result;
+            result
         } else {
             // Take max_size of the component.
             let result = c.slice(self.offset, max_size);
             self.offset += max_size;
-            return result;
+            result
         }
     }
 }

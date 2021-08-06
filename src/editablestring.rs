@@ -10,8 +10,8 @@ impl EditableText for String {
     fn insert_at(&mut self, char_pos: usize, contents: &str) {
         // If you try to write past the end of the string for now I'll just write at the end.
         // Panicing might be a better policy.
-        let byte_pos = self.char_indices().skip(char_pos).next()
-            .map(|(p, _)| p).unwrap_or(self.len());
+        let byte_pos = self.char_indices().nth(char_pos)
+            .map(|(p, _)| p).unwrap_or_else(|| self.len());
         //println!("pos {}", byte_pos);
         //self.insert_str(byte_pos, contents);
         
@@ -29,13 +29,13 @@ impl EditableText for String {
             let bytes = self.as_mut_vec().as_mut_ptr();
             //println!("{:?}", self.as_mut_vec());
             ptr::copy(
-                bytes.offset(byte_pos as isize),
-                bytes.offset((byte_pos + new_bytes) as isize),
+                bytes.add(byte_pos),
+                bytes.add(byte_pos + new_bytes),
                 old_len - byte_pos
             );
             ptr::copy_nonoverlapping(
                 contents.as_ptr(),
-                bytes.offset(byte_pos as isize),
+                bytes.add(byte_pos),
                 new_bytes
             );
             //println!("{:?}", self.as_mut_vec());
