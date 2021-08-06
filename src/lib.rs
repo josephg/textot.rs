@@ -184,7 +184,7 @@ impl <'a>TextOpIterator<'a> {
         if clen == 0 {
             // The component is invisible in the context.
             // TODO: Is this needed?
-            assert!(self.offset == 0);
+            assert_eq!(self.offset, 0);
             self.idx += 1;
 
             // This is non ideal - if the compnent contains a large string we'll
@@ -209,7 +209,7 @@ impl <'a>TextOpIterator<'a> {
 
 
 impl TextOp {
-    fn iter<'a>(&'a self, ctx: Context) -> TextOpIterator {
+    fn iter(&self, ctx: Context) -> TextOpIterator {
         TextOpIterator { op: self, ctx, idx: 0, offset: 0 }
     }
 
