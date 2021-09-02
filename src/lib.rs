@@ -26,8 +26,7 @@ impl OpComponent {
 
     pub fn count(&self) -> usize {
         match *self {
-            Skip(n) => n,
-            Del(n) => n,
+            Skip(n) | Del(n) => n,
             Ins(ref s) => s.chars().count(),
         }
     }
@@ -140,8 +139,7 @@ impl OpComponent {
     // component is applied
     fn pre_len(&self) -> usize {
         match *self {
-            Skip(n) => n,
-            Del(n) => n,
+            Skip(n) | Del(n) => n,
             Ins(_) => 0,
         }
     }
