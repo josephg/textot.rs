@@ -217,8 +217,8 @@ impl TextOp {
 
     fn append_remainder(&mut self, mut iter: TextOpIterator) {
         loop {
-            let chunk = iter.next(std::usize::MAX);
-            if let Skip(std::usize::MAX) = chunk { break; }
+            let chunk = iter.next(usize::MAX);
+            if chunk == Skip(usize::MAX) { break; }
             self.append_move(chunk);
         }
     }
